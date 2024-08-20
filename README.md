@@ -8,20 +8,21 @@
 > 本项目为个人学习使用，不保证稳定性，且不提供任何技术支持，使用者必须在遵循 OpenAI 的使用条款以及法律法规的情况下使用，不得用于非法用途。
 > 根据[《生成式人工智能服务管理暂行办法》](http://www.cac.gov.cn/2023-07/13/c_1690898327029107.htm)的要求，请勿对中国地区公众提供一切未经备案的生成式人工智能服务。
 
+本程序为基于chat-api的微调版本
 ## 此分叉版本的主要变更
 
 1.添加新的令牌计时方式（可以按第一次调用时间开始计时）
-2.
+2.还在想
 ## 部署
 
 ### 基于 Docker 进行部署
 
 ```shell
 # 使用 SQLite 的部署命令：
-docker run --name chat-api -d --restart always -p 3000:3000 -e TZ=Asia/Shanghai ai365/chat-api:latest
+docker run --name chat-api -d --restart always -p 3000:3000 -e TZ=Asia/Shanghai kkouo/chatapi:latest
 # 使用 MySQL 的部署命令，在上面的基础上添加 `-e SQL_DSN="root:123456@tcp(localhost:3306)/oneapi"`，请自行修改数据库连接参数。
 # 例如：
-docker run --name chat-api -d --restart always -p 3000:3000 -e SQL_DSN="root:123456@tcp(localhost:3306)/oneapi" -e TZ=Asia/Shanghai ai365/chat-api:latest
+docker run --name chat-api -d --restart always -p 3000:3000 -e SQL_DSN="root:123456@tcp(localhost:3306)/oneapi" -e TZ=Asia/Shanghai kkouo/chatapi:latest
 ```
 
 ### 基于 Docker Compose 进行部署
@@ -36,36 +37,6 @@ docker-compose up -d
 docker-compose ps
 ```
 
-### 手动部署
-
-1. 从 [GitHub Releases ](https://github.com/ai365vip/chat-api/releases)下载可执行文件或者从源码编译：
-
-   ```shell
-   git clone https://github.com/ai365vip/chat-api.git
-
-   # 构建前端（管理端）
-   cd chat-api/web-admin
-   npm install
-   npm run build
-
-   # 构建前端（C端）
-   cd ..
-   cd web-user
-   npm install
-   npm run build
-
-   # 构建后端
-   cd ..
-   go mod download
-   go build -ldflags "-s -w" -o chat-api
-   ```
-2. 运行：
-
-   ```shell
-   chmod u+x chat-api
-   .env //设置环境变量 放在同一目录下
-   ./chat-api --port 3000 --log-dir ./logs
-   ```
 3. 访问 [http://localhost:3000/](http://localhost:3000/) 并登录。初始账号用户名为 `root`，密码为 `123456`。
 4. 管理端访问 [http://localhost:3000/admin](http://localhost:3000/admin) 并登录。初始账号用户名为 `root`，密码为 `123456`。
 
@@ -116,24 +87,3 @@ docker-compose ps
 15. `RELAY_TIMEOUT`：中继超时设置，单位为秒，默认不设置超时时间。
 16. `SQLITE_BUSY_TIMEOUT`：SQLite 锁等待超时设置，单位为毫秒，默认 `3000`。
 
-## 界面截图
-
-![image](https://github.com/ai365vip/chat-api/assets/154959065/13fde0aa-aa19-4c2f-9ace-611fb9cd60b8)
-
-![image](https://github.com/ai365vip/chat-api/assets/154959065/23bf7267-6fac-4ca0-b6c4-2151e486f6a0)
-
-![image](https://github.com/ai365vip/chat-api/assets/154959065/0017e8cb-645b-4c05-aefa-6cd538989278)
-
-![image](https://github.com/ai365vip/chat-api/assets/154959065/e40cf5fd-0cd3-4065-8c81-b88275ecd8d0)
-![image](https://github.com/ai365vip/chat-api/assets/154959065/95a66dec-fe0d-4446-9d76-fe2f3e59e2ea)
-
-![image](https://github.com/ai365vip/chat-api/assets/154959065/e182c58f-0957-4705-8f9a-14f02acd1b9a)
-![image](https://github.com/ai365vip/chat-api/assets/154959065/ecdbd755-fc08-4ee4-a08c-fc179fca51f7)
-![image](https://github.com/ai365vip/chat-api/assets/154959065/e48e016e-6d92-47b1-ab9b-3d5fec53175f)
-
-## 赞助
-
-如果觉得这个软件对你有所帮助，欢迎请作者喝可乐、喝咖啡～
-
-<img src="https://github.com/ai365vip/chat-api/assets/154959065/31289586-f7a6-4640-bf8c-e6d6c97db581" width="250"  style="margin-right: 100px;">                                                    <img 
-src="https://github.com/ai365vip/chat-api/assets/154959065/bf2d09f4-4569-481c-9328-754a4bc9f67c" width="250">
