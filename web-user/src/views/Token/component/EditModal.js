@@ -18,7 +18,13 @@ import {
   OutlinedInput,
   InputAdornment,
   Switch,
-  FormHelperText,TextField,Select, MenuItem,Chip,Checkbox,ListItemText
+  FormHelperText,
+  TextField,
+  Select,
+  MenuItem,
+  Chip,
+  Checkbox,
+  ListItemText
 } from '@mui/material';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
@@ -28,11 +34,11 @@ import { API } from 'utils/api';
 
 const validationSchema = Yup.object().shape({
   is_edit: Yup.boolean(),
-  name: Yup.string().required('名称 不能为空'),
+  name: Yup.string().required('名称不能为空'),
   remain_quota: Yup.number()
     .when('unlimited_quota', {
-      is: true, 
-      then: Yup.number().min(0, '额度不能小于0'), 
+      is: true,
+      then: Yup.number().min(0, '额度不能小于0'),
       otherwise: Yup.number().min(0.5, '必须大于等于0.5')
     }),
   expired_time: Yup.number(),
@@ -40,18 +46,25 @@ const validationSchema = Yup.object().shape({
   billing_enabled: Yup.boolean(),
   models: Yup.array().of(Yup.string()),
   group: Yup.string(),
+  expiry_mode: Yup.string().oneOf(['fixed', 'first_use']).required('请选择过期模式'),
+  duration: Yup.number().when('expiry_mode', {
+    is: 'first_use',
+    then: Yup.number().min(0.1, '有效期至少为1小时').max(8760, '有效期最长为1年').required('请输入有效期')
+  }),
 });
 
 const originInputs = {
   is_edit: false,
   name: '',
-  fixed_content:'',
-  subnet:'',
+  fixed_content: '',
+  subnet: '',
   remain_quota: 1,
-  expired_time: -1,
+  expired_time: Math.floor(Date.now() / 1000) + 24 * 3600, // 默认24小时后过期
   unlimited_quota: false,
-  billing_enabled:false,
+  billing_enabled: false,
   group: '',
+  expiry_mode: 'fixed',
+  duration: 24,
 };
 
 const EditModal = ({ open, tokenId, onCancel, onOk }) => {
@@ -63,7 +76,9 @@ const EditModal = ({ open, tokenId, onCancel, onOk }) => {
   const [options, setOptions] = useState({});
   const [models, setModels] = useState([]);
   const [groups, setGroups] = useState([]);
+  const [batchAddCount, setBatchAddCount] = useState(1);
   let quotaPerUnit = localStorage.getItem('quota_per_unit');
+
   const generateRandomSuffix = () => {
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
     let result = '';
@@ -92,10 +107,18 @@ const EditModal = ({ open, tokenId, onCancel, onOk }) => {
         }
         adjustedValues.models = values.models.join(',');
 
-        // Add 4 random chars for each token when in batch add mode
         if (batchAddCount > 1) {
-          const randomSuffix = generateRandomSuffix(); // Generate 4 random characters
+          const randomSuffix = generateRandomSuffix();
           adjustedValues.name = `${values.name}-${randomSuffix}`;
+        }
+
+        if (adjustedValues.expiry_mode === 'first_use') {
+          adjustedValues.expired_time = -1;
+          adjustedValues.duration = parseInt(adjustedValues.duration)*3600;
+        } else if (adjustedValues.expiry_mode === 'fixed' && adjustedValues.expired_time === -1) {
+          adjustedValues.duration = 0;
+        } else {
+          delete adjustedValues.duration;
         }
 
         let res;
@@ -128,38 +151,45 @@ const EditModal = ({ open, tokenId, onCancel, onOk }) => {
 
   const loadModels = async () => {
     try {
-        let res = await API.get('/api/user/models');
-        const { success, message, data } = res.data;
-        if (success) {
-            setModels(data);
-        } else {
-            showError(message);
-        }
+      let res = await API.get('/api/user/models');
+      const { success, message, data } = res.data;
+      if (success) {
+        setModels(data);
+      } else {
+        showError(message);
+      }
     } catch (err) {
-        showError(err.message);
+      showError(err.message);
     }
   };
 
   const loadGroups = async () => {
     try {
-        let res = await API.get('/api/user/group');
-        const { success, message, data } = res.data;
-        if (success) {
-            setGroups(data);
-        } else {
-            showError(message);
-        }
+      let res = await API.get('/api/user/group');
+      const { success, message, data } = res.data;
+      if (success) {
+        setGroups(data);
+      } else {
+        showError(message);
+      }
     } catch (err) {
-        showError(err.message);
+      showError(err.message);
     }
   };
-
-  const [batchAddCount, setBatchAddCount] = useState(1);
 
   const handleBatchAddChange = (event) => {
     const count = parseInt(event.target.value, 10);
     if (!isNaN(count) && count > 0) {
       setBatchAddCount(count);
+    }
+  };
+    const handleExpiryModeChange = (mode, setFieldValue) => {
+    setFieldValue('expiry_mode', mode);
+    if (mode === 'fixed') {
+      setFieldValue('expired_time', Math.floor(Date.now() / 1000) + 24 * 3600);
+      setFieldValue('duration', 24);
+    } else {
+      setFieldValue('expired_time', -1);
     }
   };
 
@@ -170,9 +200,11 @@ const EditModal = ({ open, tokenId, onCancel, onOk }) => {
       data.is_edit = true;
       setInputs({
         ...data,
-        remain_quota: parseFloat(data.remain_quota)/quotaPerUnit, 
-        models: data.models ? data.models.split(',') : [] ,
-        group: data.group || '' 
+        remain_quota: parseFloat(data.remain_quota) / quotaPerUnit,
+        models: data.models ? data.models.split(',') : [],
+        group: data.group || '',
+        expiry_mode: data.expired_time === -1 ? 'first_use' : 'fixed',
+        duration: data.duration ? data.duration / 3600 : 24
       });
     } else {
       showError(message);
@@ -184,8 +216,8 @@ const EditModal = ({ open, tokenId, onCancel, onOk }) => {
       loadToken().catch(showError);
     } else {
       setInputs({
-        ...originInputs, 
-        models: [], 
+        ...originInputs,
+        models: [],
       });
     }
     loadModels();
@@ -194,7 +226,6 @@ const EditModal = ({ open, tokenId, onCancel, onOk }) => {
   }, [tokenId]);
 
   useEffect(() => {
-    // 此处代码用于初始加载和tokenId改变时重设batchAddCount
     if (!tokenId) {
       setBatchAddCount(1);
     }
@@ -208,25 +239,23 @@ const EditModal = ({ open, tokenId, onCancel, onOk }) => {
       data.forEach((item) => {
         newOptions[item.key] = item.value;
       });
-      setOptions(newOptions); // 设置所有选项的状态
+      setOptions(newOptions);
     } else {
       showError(message);
     }
   };
 
   useEffect(() => {
-    if (options.ModelRatioEnabled) { 
+    if (options.ModelRatioEnabled) {
       setModelRatioEnabled(options.ModelRatioEnabled === 'true');
     }
-    if (options.BillingByRequestEnabled) { 
+    if (options.BillingByRequestEnabled) {
       setBillingByRequestEnabled(options.BillingByRequestEnabled === 'true');
     }
-    if (options.UserGroupEnabled) { 
+    if (options.UserGroupEnabled) {
       setUserGroupEnabled(options.UserGroupEnabled === 'true');
     }
   }, [options]);
-
-  
 
   return (
     <Dialog open={open} onClose={onCancel} fullWidth maxWidth={'md'}>
@@ -237,8 +266,7 @@ const EditModal = ({ open, tokenId, onCancel, onOk }) => {
       <DialogContent>
         <Alert severity="info">注意，令牌的额度仅用于限制令牌本身的最大额度使用量，实际的使用受到账户的剩余额度限制。</Alert>
         <Formik initialValues={inputs} enableReinitialize validationSchema={validationSchema} onSubmit={submit}>
-          
-          {({ errors, handleBlur, handleChange, handleSubmit, touched, values, setFieldError, setFieldValue, isSubmitting }) => (
+          {({ errors, handleBlur, handleChange, handleSubmit, touched, values, setFieldValue, isSubmitting }) => (
             <form noValidate onSubmit={handleSubmit}>
               <FormControl fullWidth error={Boolean(touched.name && errors.name)} sx={{ ...theme.typography.otherInput }}>
                 <InputLabel htmlFor="channel-name-label">名称</InputLabel>
@@ -259,20 +287,30 @@ const EditModal = ({ open, tokenId, onCancel, onOk }) => {
                   </FormHelperText>
                 )}
               </FormControl>
-              {values.expired_time !== -1 && (
-                <FormControl fullWidth error={Boolean(touched.expired_time && errors.expired_time)} sx={{ ...theme.typography.otherInput }}>
+
+              <FormControl fullWidth sx={{ ...theme.typography.otherInput, mt: 2 }}>
+                <InputLabel id="expiry-mode-label">过期模式</InputLabel>
+                <Select
+                  labelId="expiry-mode-label"
+                  id="expiry-mode-select"
+                  value={values.expiry_mode}
+                  label="过期模式"
+                  onChange={(event) => handleExpiryModeChange(event.target.value, setFieldValue)}
+                  disabled={!!tokenId}
+                >
+                  <MenuItem value="fixed">固定时间</MenuItem>
+                  <MenuItem value="first_use">首次使用后计时</MenuItem>
+                </Select>
+                {tokenId && <FormHelperText>编辑模式下不允许更改过期模式</FormHelperText>}
+              </FormControl>
+
+              {values.expiry_mode === 'fixed' && (
+                <FormControl fullWidth error={Boolean(touched.expired_time && errors.expired_time)} sx={{ ...theme.typography.otherInput, mt: 2 }}>
                   <LocalizationProvider dateAdapter={AdapterDayjs} adapterLocale={'zh-cn'}>
                     <DateTimePicker
                       label="过期时间"
                       ampm={false}
-                      value={dayjs.unix(values.expired_time)}
-                      onError={(newError) => {
-                        if (newError === null) {
-                          setFieldError('expired_time', null);
-                        } else {
-                          setFieldError('expired_time', '无效的日期');
-                        }
-                      }}
+                      value={dayjs.unix(values.expired_time === -1 ? Math.floor(Date.now() / 1000) : values.expired_time)}
                       onChange={(newValue) => {
                         setFieldValue('expired_time', newValue.unix());
                       }}
@@ -290,18 +328,28 @@ const EditModal = ({ open, tokenId, onCancel, onOk }) => {
                   )}
                 </FormControl>
               )}
-              <Switch
-                checked={values.expired_time === -1}
-                onClick={() => {
-                  if (values.expired_time === -1) {
-                    setFieldValue('expired_time', Math.floor(Date.now() / 1000));
-                  } else {
-                    setFieldValue('expired_time', -1);
-                  }
-                }}
-              />{' '}
-              永不过期
-              <FormControl fullWidth error={Boolean(touched.remain_quota && errors.remain_quota)} sx={{ ...theme.typography.otherInput }}>
+
+              {values.expiry_mode === 'first_use' && (
+                <FormControl fullWidth sx={{ ...theme.typography.otherInput, mt: 2 }}>
+                  <InputLabel htmlFor="duration-label">有效期（小时）</InputLabel>
+                  <OutlinedInput
+                    id="duration-label"
+                    label="有效期（小时）"
+                    type="number"
+                    value={values.duration}
+                    name="duration"
+                    onChange={handleChange}
+                  />
+                  {touched.duration && errors.duration && (
+                    <FormHelperText error id="helper-text-duration-label">
+                      {errors.duration}
+                    </FormHelperText>
+                  )}
+                  <FormHelperText>首次使用后开始计时</FormHelperText>
+                </FormControl>
+              )}
+
+              <FormControl fullWidth error={Boolean(touched.remain_quota && errors.remain_quota)} sx={{ ...theme.typography.otherInput, mt: 2 }}>
                 <InputLabel htmlFor="channel-remain_quota-label">额度</InputLabel>
                 <OutlinedInput
                   id="channel-remain_quota-label"
@@ -312,10 +360,9 @@ const EditModal = ({ open, tokenId, onCancel, onOk }) => {
                   endAdornment={<InputAdornment position="end">{renderQuotaWithPrompt(values.remain_quota)}</InputAdornment>}
                   onBlur={handleBlur}
                   onChange={handleChange}
-                  aria-describedby="helper-text-channel-remain_quota-label"
+                                    aria-describedby="helper-text-channel-remain_quota-label"
                   disabled={values.unlimited_quota}
                 />
-
                 {touched.remain_quota && errors.remain_quota && (
                   <FormHelperText error id="helper-tex-channel-remain_quota-label">
                     {errors.remain_quota}
@@ -330,8 +377,7 @@ const EditModal = ({ open, tokenId, onCancel, onOk }) => {
               />{' '}
               无限额度
               <FormControl fullWidth sx={{ ...theme.typography.otherInput, mt: 2 }}>
-
-              <InputLabel htmlFor="models-multiple-select">可用模型</InputLabel>
+                <InputLabel htmlFor="models-multiple-select">可用模型</InputLabel>
                 <Select
                   labelId="models-multiple-label"
                   id="models-multiple-select"
@@ -346,7 +392,6 @@ const EditModal = ({ open, tokenId, onCancel, onOk }) => {
                         <Chip
                           key={value}
                           label={value}
-                          // 添加 margin 来解决标签之间的间距问题
                           style={{ margin: '1px' }}
                         />
                       ))}
@@ -362,18 +407,13 @@ const EditModal = ({ open, tokenId, onCancel, onOk }) => {
                   }}
                 >
                   {models.map((model) => (
-            <MenuItem key={model} value={model}>
-              <Checkbox checked={values.models.indexOf(model) > -1} />
-              <ListItemText primary={model} />
-            </MenuItem>
-          ))}
+                    <MenuItem key={model} value={model}>
+                      <Checkbox checked={values.models.indexOf(model) > -1} />
+                      <ListItemText primary={model} />
+                    </MenuItem>
+                  ))}
                 </Select>
                 <FormHelperText>选择令牌可以使用的模型，为空表示全部可用。</FormHelperText>
-                {touched.models && errors.models && (
-                  <FormHelperText error id="helper-text-models">
-                    {errors.models}
-                  </FormHelperText>
-                )}
               </FormControl>
               {userGroupEnabled && (
                 <FormControl fullWidth sx={{ ...theme.typography.otherInput, mt: 2 }}>
@@ -396,37 +436,34 @@ const EditModal = ({ open, tokenId, onCancel, onOk }) => {
                 </FormControl>
               )}
 
-
-              {/* 新增的计费方式选择框 */}
               {tokenId ? null : (
-              modelRatioEnabled && billingByRequestEnabled && (
-              <FormControl fullWidth error={Boolean(touched.billing_enabled && errors.billing_enabled)} sx={{ ...theme.typography.otherInput }}>
-                  <InputLabel id="billing-enabled-label">计费方式</InputLabel>
-                  <Select
-                    labelId="billing-enabled-label"
-                    id="billing-enabled-select"
-                    value={String(values.billing_enabled)} // 将布尔值转换为字符串
-                    label="计费方式"
-                    name="billing_enabled"
-                    onBlur={handleBlur}
-                    onChange={(event) => {
-                      // 更新表单状态时，将字符串转换回布尔值
-                      setFieldValue('billing_enabled', event.target.value === 'true');
-                    }}
-                  >
-                    <MenuItem value={'false'}>按Token计费</MenuItem>
-                    <MenuItem value={'true'}>按次计费</MenuItem>
-                  </Select>
-                  {touched.billing_enabled && errors.billing_enabled && (
-                    <FormHelperText error id="helper-text-billing-enabled">
-                      {errors.billing_enabled}
-                    </FormHelperText>
-                  )}
-                </FormControl>
-                  )
-                )}
+                modelRatioEnabled && billingByRequestEnabled && (
+                  <FormControl fullWidth error={Boolean(touched.billing_enabled && errors.billing_enabled)} sx={{ ...theme.typography.otherInput, mt: 2 }}>
+                    <InputLabel id="billing-enabled-label">计费方式</InputLabel>
+                    <Select
+                      labelId="billing-enabled-label"
+                      id="billing-enabled-select"
+                      value={String(values.billing_enabled)}
+                      label="计费方式"
+                      name="billing_enabled"
+                      onBlur={handleBlur}
+                      onChange={(event) => {
+                        setFieldValue('billing_enabled', event.target.value === 'true');
+                      }}
+                    >
+                      <MenuItem value={'false'}>按Token计费</MenuItem>
+                      <MenuItem value={'true'}>按次计费</MenuItem>
+                    </Select>
+                    {touched.billing_enabled && errors.billing_enabled && (
+                      <FormHelperText error id="helper-text-billing-enabled">
+                        {errors.billing_enabled}
+                      </FormHelperText>
+                    )}
+                  </FormControl>
+                )
+              )}
 
-              <FormControl fullWidth error={Boolean(touched.subnet && errors.subnet)} sx={{ ...theme.typography.otherInput }}>
+              <FormControl fullWidth error={Boolean(touched.subnet && errors.subnet)} sx={{ ...theme.typography.otherInput, mt: 2 }}>
                 <InputLabel htmlFor="channel-subnet-label">IP 限制</InputLabel>
                 <OutlinedInput
                   id="channel-subnet-label"
@@ -437,10 +474,9 @@ const EditModal = ({ open, tokenId, onCancel, onOk }) => {
                   onBlur={handleBlur}
                   onChange={handleChange}
                   inputProps={{ autoComplete: 'subnet' }}
-                  helperText="请输入允许访问的网段，例如：192.168.0.0/24"
                   aria-describedby="helper-text-channel-subnet-label"
                 />
-                 <FormHelperText>请输入允许访问的网段，例如：192.168.0.0/24</FormHelperText>
+                <FormHelperText>请输入允许访问的网段，例如：192.168.0.0/24</FormHelperText>
                 {touched.subnet && errors.subnet && (
                   <FormHelperText error id="helper-tex-channel-subnet-label">
                     {errors.subnet}
@@ -448,7 +484,7 @@ const EditModal = ({ open, tokenId, onCancel, onOk }) => {
                 )}
               </FormControl>
 
-              <FormControl fullWidth error={Boolean(touched.fixed_content && errors.fixed_content)} sx={{ ...theme.typography.otherInput }}>
+              <FormControl fullWidth error={Boolean(touched.fixed_content && errors.fixed_content)} sx={{ ...theme.typography.otherInput, mt: 2 }}>
                 <InputLabel htmlFor="channel-fixed_content-label">自定义后缀</InputLabel>
                 <OutlinedInput
                   id="channel-name-label"
@@ -459,9 +495,9 @@ const EditModal = ({ open, tokenId, onCancel, onOk }) => {
                   onBlur={handleBlur}
                   onChange={handleChange}
                   inputProps={{ autoComplete: 'fixed_content' }}
-                  helperText="使用令牌回复内容增加固定后缀"
                   aria-describedby="helper-text-channel-fixed_content-label"
                 />
+                <FormHelperText>使用令牌回复内容增加固定后缀</FormHelperText>
                 {touched.fixed_content && errors.fixed_content && (
                   <FormHelperText error id="helper-tex-channel-fixed_content-label">
                     {errors.fixed_content}
@@ -470,7 +506,7 @@ const EditModal = ({ open, tokenId, onCancel, onOk }) => {
               </FormControl>
 
               {tokenId ? null : (
-                <FormControl fullWidth sx={{ ...theme.typography.otherInput }}>
+                <FormControl fullWidth sx={{ ...theme.typography.otherInput, mt: 2 }}>
                   <TextField
                     label="批量添加数量"
                     type="number"
@@ -488,7 +524,6 @@ const EditModal = ({ open, tokenId, onCancel, onOk }) => {
                   提交
                 </Button>
               </DialogActions>
-              
             </form>
           )}
         </Formik>

@@ -156,16 +156,24 @@ const TokensTable = () => {
             },
         },
         {
-            title: '过期时间',
-            dataIndex: 'expired_time',
-            render: (text, record, index) => {
-                return (
-                    <div>
-                        {record.expired_time === -1 ? "永不过期" : renderTimestamp(text)}
-                    </div>
-                );
-            },
-        },
+    title: '过期时间',
+    dataIndex: 'expired_time',
+    render: (text, record, index) => {
+        if (record.expiry_mode === 'first_use') {
+            if (record.first_used_time === 0) {
+                return '首次使用后开始计时';
+            } else {
+                const expiresAt = record.first_used_time + record.duration;
+                return renderTimestamp(expiresAt);
+            }
+        } else if (record.expired_time === -1) {
+            return "永不过期";
+        } else {
+            return renderTimestamp(text);
+        }
+    },
+},
+
         modelRatioEnabled && billingByRequestEnabled && {
             title: '计费策略',
             dataIndex: 'billing_enabled',

@@ -30,6 +30,10 @@ type Token struct {
 	FixedContent   string  `json:"fixed_content" gorm:"type:varchar(1000);"`
 	Subnet         *string `json:"subnet" gorm:"default:''"` // allowed subnet
 	Version        int64   `json:"version" gorm:"default:0"`
+	LastEnabledAt  int64   `json:"last_enabled_at" gorm:"bigint;default:0"`
+	ExpiryMode     string  `json:"expiry_mode"`
+	Duration       int64   `json:"duration"`
+	FirstUsedTime  int64   `json:"first_used_time"`
 }
 
 func GetAllUserTokens(userId int, startIdx int, num int) ([]*Token, error) {
@@ -61,7 +65,19 @@ func ValidateUserToken(key string, model string) (token *Token, err error) {
 		if token.Status != common.TokenStatusEnabled {
 			return nil, errors.New("该令牌状态不可用")
 		}
-		if token.ExpiredTime != -1 && token.ExpiredTime < common.GetTimestamp() {
+
+		if token.ExpiryMode == "first_use" {
+			if token.FirstUsedTime == 0 {
+				// 首次使用，设置 FirstUsedTime
+				token.FirstUsedTime = common.GetTimestamp()
+				err = token.UpdateFirstUsedTime()
+				if err != nil {
+					return nil, errors.New("更新令牌首次使用时间失败")
+				}
+			} else if common.GetTimestamp() > token.FirstUsedTime+token.Duration{
+				return nil, errors.New("该令牌已过期")
+			}
+		} else if token.ExpiredTime != -1 && token.ExpiredTime < common.GetTimestamp() {
 			if !common.RedisEnabled {
 				token.Status = common.TokenStatusExpired
 				err := token.SelectUpdate()
@@ -71,6 +87,7 @@ func ValidateUserToken(key string, model string) (token *Token, err error) {
 			}
 			return nil, errors.New("该令牌已过期")
 		}
+
 		if !token.UnlimitedQuota && token.RemainQuota <= 0 {
 			if !common.RedisEnabled {
 				// in this case, we can make sure the token is exhausted
@@ -132,7 +149,7 @@ func (token *Token) Insert() error {
 // Update Make sure your token's fields is completed, because this will update non-zero values
 func (token *Token) Update() error {
 	var err error
-	err = DB.Model(token).Select("name", "status", "expired_time", "remain_quota", "unlimited_quota", "group", "billing_enabled", "models", "fixed_content", "subnet").Updates(token).Error
+	err = DB.Model(token).Select("name", "status", "expired_time", "remain_quota", "unlimited_quota", "group", "billing_enabled", "models", "fixed_content", "subnet", "expiry_mode", "duration").Updates(token).Error
 	return err
 }
 
@@ -310,3 +327,9 @@ func PreConsumeTokenQuota(tokenId int, quota int) (err error) {
 	err = DecreaseUserQuota(token.UserId, quota)
 	return err
 }
+func (token *Token) UpdateFirstUsedTime() error {
+	return DB.Model(token).Select("FirstUsedTime").Updates(map[string]interface{}{
+		"FirstUsedTime": token.FirstUsedTime,
+	}).Error
+}
+

@@ -228,7 +228,22 @@ export default function TokensTableRow({ item, manageToken, handleOpenModal, set
 
         <TableCell>{timestamp2string(item.created_time)}</TableCell>
 
-        <TableCell>{item.expired_time === -1 ? '永不过期' : timestamp2string(item.expired_time)}</TableCell>
+        <TableCell>
+  {(() => {
+    if (item.expiry_mode === 'first_use') {
+      if (item.first_used_time === 0) {
+        return '首次使用后开始计时';
+      } else {
+        const expiresAt = item.first_used_time + item.duration;
+        return timestamp2string(expiresAt);
+      }
+    } else if (item.expired_time === -1) {
+      return '永不过期';
+    } else {
+      return timestamp2string(item.expired_time);
+    }
+  })()}
+</TableCell>
         {modelRatioEnabled && billingByRequestEnabled && (
         <TableCell>
           {loading ? (

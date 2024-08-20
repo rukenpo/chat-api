@@ -98,16 +98,25 @@ func GetTokenStatus(c *gin.Context) {
 		})
 		return
 	}
-	expiredAt := token.ExpiredTime
-	if expiredAt == -1 {
-		expiredAt = 0
+	var expiresAt int64
+	if token.ExpiryMode == "first_use" {
+		if token.FirstUsedTime > 0 {
+			expiresAt = token.FirstUsedTime + token.Duration // 转换为秒
+		} else {
+			expiresAt = 0 // 尚未使用
+		}
+	} else {
+		expiresAt = token.ExpiredTime
+	}
+	if expiresAt == -1 {
+		expiresAt = 0 // 处理永不过期的情况
 	}
 	c.JSON(http.StatusOK, gin.H{
 		"object":          "credit_summary",
 		"total_granted":   token.RemainQuota,
 		"total_used":      0, // not supported currently
 		"total_available": token.RemainQuota,
-		"expires_at":      expiredAt * 1000,
+		"expires_at":      expiresAt * 1000,
 	})
 }
 
@@ -122,10 +131,10 @@ func AddToken(c *gin.Context) {
 		})
 		return
 	}
-	if len(token.Name) > 30 {
+	if err := validateToken(c, token); err != nil {
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,
-			"message": "令牌名称过长",
+			"message": err.Error(),
 		})
 		return
 	}
@@ -162,6 +171,11 @@ func AddToken(c *gin.Context) {
 		BillingEnabled: token.BillingEnabled,
 		Models:         token.Models,
 		FixedContent:   token.FixedContent,
+		ExpiryMode:     token.ExpiryMode,
+		Duration:       token.Duration,
+	}
+	if cleanToken.ExpiryMode == "first_use" {
+		cleanToken.ExpiredTime = -1
 	}
 	err = cleanToken.Insert()
 	if err != nil {
@@ -199,7 +213,7 @@ func DeleteToken(c *gin.Context) {
 func UpdateToken(c *gin.Context) {
 	userId := c.GetInt("id")
 	statusOnly := c.Query("status_only")
-	billingStrategyOnly := c.Query("billing_strategy_only") // 新增查询参数
+	billingStrategyOnly := c.Query("billing_strategy_only")
 	token := model.Token{}
 	err := c.ShouldBindJSON(&token)
 	if err != nil {
@@ -209,10 +223,10 @@ func UpdateToken(c *gin.Context) {
 		})
 		return
 	}
-	if len(token.Name) > 30 {
+	if err := validateToken(c, token); err != nil {
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,
-			"message": "令牌名称过长",
+			"message": err.Error(),
 		})
 		return
 	}
@@ -265,7 +279,6 @@ func UpdateToken(c *gin.Context) {
 	} else if billingStrategyOnly != "" {
 		cleanToken.BillingEnabled = token.BillingEnabled
 	} else {
-		// If you add more fields, please also update token.Update()
 		cleanToken.Name = token.Name
 		cleanToken.ExpiredTime = token.ExpiredTime
 		cleanToken.RemainQuota = token.RemainQuota
@@ -274,6 +287,12 @@ func UpdateToken(c *gin.Context) {
 		cleanToken.Models = token.Models
 		cleanToken.FixedContent = token.FixedContent
 		cleanToken.Subnet = token.Subnet
+		cleanToken.ExpiryMode = token.ExpiryMode
+		cleanToken.Duration = token.Duration
+
+		if cleanToken.ExpiryMode == "first_use" {
+			cleanToken.ExpiredTime = -1
+		}
 	}
 	err = cleanToken.Update()
 	if err != nil {
@@ -360,5 +379,59 @@ func validateToken(c *gin.Context, token model.Token) error {
 			return fmt.Errorf("无效的网段：%s", err.Error())
 		}
 	}
+	if token.ExpiryMode != "fixed" && token.ExpiryMode != "first_use" {
+		return fmt.Errorf("无效的过期模式")
+	}
+	if token.ExpiryMode == "first_use" {
+		if token.Duration <= 0 {
+			return fmt.Errorf("首次使用模式下，有效期必须大于0")
+		}
+		if token.Duration > 8760*3600 { // 最长一年
+			return fmt.Errorf("有效期不能超过一年")
+		}
+	}
 	return nil
+}
+
+func UseTokenFirstTime(c *gin.Context) {
+	tokenId := c.GetInt("token_id")
+	userId := c.GetInt("id")
+
+	token, err := model.GetTokenByIds(tokenId, userId)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{
+			"success": false,
+			"message": "Token not found",
+		})
+		return
+	}
+
+	if token.ExpiryMode == "first_use" && token.FirstUsedTime == 0 {
+		token.FirstUsedTime = common.GetTimestamp()
+		err = token.Update()
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"success": false,
+				"message": "Failed to update token",
+			})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{
+			"success": true,
+			"message": "Token used for the first time",
+			"data": gin.H{
+				"first_used_time": token.FirstUsedTime,
+				"expires_at":      (token.FirstUsedTime + token.Duration) * 1000,
+			},
+		})
+	} else {
+		c.JSON(http.StatusOK, gin.H{
+			"success": true,
+			"message": "Token already used or not in first_use mode",
+			"data": gin.H{
+				"first_used_time": token.FirstUsedTime,
+				"expires_at":      token.ExpiredTime * 1000,
+			},
+		})
+	}
 }

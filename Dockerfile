@@ -11,9 +11,16 @@ COPY web-admin/package.json web-admin/package-lock.json ./web-admin/
 RUN npm ci --prefix web-user
 RUN npm ci --prefix web-admin
 
+# 为 web-user 和 web-admin 安装 @babel/plugin-proposal-private-property-in-object
+RUN npm install --save-dev @babel/plugin-proposal-private-property-in-object --prefix web-user
+RUN npm install --save-dev @babel/plugin-proposal-private-property-in-object --prefix web-admin
+
 # 复制源代码
 COPY web-user ./web-user
 COPY web-admin ./web-admin
+
+# 修复 EditModal.js 文件
+
 
 # 构建 web-user 和 web-admin 应用
 RUN DISABLE_ESLINT_PLUGIN='true' REACT_APP_VERSION=$(cat VERSION) npm run build --prefix web-user
