@@ -211,104 +211,95 @@ func DeleteToken(c *gin.Context) {
 }
 
 func UpdateToken(c *gin.Context) {
-	userId := c.GetInt("id")
-	statusOnly := c.Query("status_only")
-	billingStrategyOnly := c.Query("billing_strategy_only")
-	token := model.Token{}
-	err := c.ShouldBindJSON(&token)
-	if err != nil {
-		c.JSON(http.StatusOK, gin.H{
-			"success": false,
-			"message": err.Error(),
-		})
-		return
-	}
-	if err := validateToken(c, token); err != nil {
-		c.JSON(http.StatusOK, gin.H{
-			"success": false,
-			"message": err.Error(),
-		})
-		return
-	}
-	if token.Group != "" {
-		role := model.GetRole(userId)
-		if role < 10 {
-			if _, exists := common.GroupUserRatio[token.Group]; !exists {
-				c.JSON(http.StatusOK, gin.H{
-					"success": false,
-					"message": "无效的用户组",
-				})
-				return
-			}
-		} else {
-			if _, exists := common.GroupRatio[token.Group]; !exists {
-				c.JSON(http.StatusOK, gin.H{
-					"success": false,
-					"message": "无效的用户组",
-				})
-				return
-			}
-		}
-	}
-	cleanToken, err := model.GetTokenByIds(token.Id, userId)
-	if err != nil {
-		c.JSON(http.StatusOK, gin.H{
-			"success": false,
-			"message": err.Error(),
-		})
-		return
-	}
-	if token.Status == common.TokenStatusEnabled {
-		if cleanToken.Status == common.TokenStatusExpired && cleanToken.ExpiredTime <= common.GetTimestamp() && cleanToken.ExpiredTime != -1 {
-			c.JSON(http.StatusOK, gin.H{
-				"success": false,
-				"message": "令牌已过期，无法启用，请先修改令牌过期时间，或者设置为永不过期",
-			})
-			return
-		}
-		if cleanToken.Status == common.TokenStatusExhausted && cleanToken.RemainQuota <= 0 && !cleanToken.UnlimitedQuota {
-			c.JSON(http.StatusOK, gin.H{
-				"success": false,
-				"message": "令牌可用额度已用尽，无法启用，请先修改令牌剩余额度，或者设置为无限额度",
-			})
-			return
-		}
-	}
-	if statusOnly != "" {
-		cleanToken.Status = token.Status
-	} else if billingStrategyOnly != "" {
-		cleanToken.BillingEnabled = token.BillingEnabled
-	} else {
-		cleanToken.Name = token.Name
-		cleanToken.ExpiredTime = token.ExpiredTime
-		cleanToken.RemainQuota = token.RemainQuota
-		cleanToken.UnlimitedQuota = token.UnlimitedQuota
-		cleanToken.Group = token.Group
-		cleanToken.Models = token.Models
-		cleanToken.FixedContent = token.FixedContent
-		cleanToken.Subnet = token.Subnet
-		cleanToken.ExpiryMode = token.ExpiryMode
-		cleanToken.Duration = token.Duration
+    userId := c.GetInt("id")
+    statusOnly := c.Query("status_only")
+    billingStrategyOnly := c.Query("billing_strategy_only")
+    token := model.Token{}
+    err := c.ShouldBindJSON(&token)
+    if err != nil {
+        c.JSON(http.StatusOK, gin.H{
+            "success": false,
+            "message": "解析请求数据失败: " + err.Error(),
+        })
+        return
+    }
 
-		if cleanToken.ExpiryMode == "first_use" {
-			cleanToken.ExpiredTime = -1
-		}
-	}
-	err = cleanToken.Update()
-	if err != nil {
-		c.JSON(http.StatusOK, gin.H{
-			"success": false,
-			"message": err.Error(),
-		})
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "",
-		"data":    cleanToken,
-	})
-	return
+    cleanToken, err := model.GetTokenByIds(token.Id, userId)
+    if err != nil {
+        c.JSON(http.StatusOK, gin.H{
+            "success": false,
+            "message": "获取令牌失败: " + err.Error(),
+        })
+        return
+    }
+
+    if statusOnly != "" {
+        // 只更新状态
+        cleanToken.Status = token.Status
+    } else if billingStrategyOnly != "" {
+        // 只更新计费策略
+        cleanToken.BillingEnabled = token.BillingEnabled
+    } else {
+        // 更新所有字段
+        cleanToken.Name = token.Name
+        cleanToken.ExpiredTime = token.ExpiredTime
+        cleanToken.RemainQuota = token.RemainQuota
+        cleanToken.UnlimitedQuota = token.UnlimitedQuota
+        cleanToken.Group = token.Group
+        cleanToken.Models = token.Models
+        cleanToken.FixedContent = token.FixedContent
+        cleanToken.Subnet = token.Subnet
+        cleanToken.ExpiryMode = token.ExpiryMode
+        cleanToken.Duration = token.Duration
+
+        if cleanToken.ExpiryMode == "first_use" {
+            cleanToken.ExpiredTime = -1
+        }
+    }
+
+    // 验证更新后的令牌
+    if err := validateToken(c, *cleanToken); err != nil {
+        c.JSON(http.StatusOK, gin.H{
+            "success": false,
+            "message": "验证令牌失败: " + err.Error(),
+        })
+        return
+    }
+
+    // 检查令牌状态
+    if cleanToken.Status == common.TokenStatusEnabled {
+        if cleanToken.ExpiredTime <= common.GetTimestamp() && cleanToken.ExpiredTime != -1 {
+            c.JSON(http.StatusOK, gin.H{
+                "success": false,
+                "message": "令牌已过期，无法启用，请先修改令牌过期时间，或者设置为永不过期",
+            })
+            return
+        }
+        if cleanToken.RemainQuota <= 0 && !cleanToken.UnlimitedQuota {
+            c.JSON(http.StatusOK, gin.H{
+                "success": false,
+                "message": "令牌可用额度已用尽，无法启用，请先修改令牌剩余额度，或者设置为无限额度",
+            })
+            return
+        }
+    }
+
+    err = cleanToken.Update()
+    if err != nil {
+        c.JSON(http.StatusOK, gin.H{
+            "success": false,
+            "message": "更新令牌失败: " + err.Error(),
+        })
+        return
+    }
+
+    c.JSON(http.StatusOK, gin.H{
+        "success": true,
+        "message": "令牌更新成功",
+        "data":    cleanToken,
+    })
 }
+
 
 func UpdateTokenBillingStrategy(c *gin.Context) {
 	userId := c.GetInt("id")
