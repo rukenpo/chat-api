@@ -423,70 +423,65 @@ func StartScheduledRefreshAccessTokens() {
 }
 
 func ScheduledRefreshAccessTokens() error {
-	common.SysLog("开始定时刷新访问令牌")
+    common.SysLog("开始定时刷新访问令牌")
 
-	var channels []Channel
+    var channels []Channel
 
-	// 查询所有 type = 40 的通道
-	err := DB.Where("type = ?", 42).Find(&channels).Error
-	if err != nil {
-		return fmt.Errorf("没有GCP通道：%v", err)
-	}
+    // 查询所有 type = 42 的通道，包括状态为3的通道
+    err := DB.Where("type = ?", 42).Find(&channels).Error
+    if err != nil {
+        return fmt.Errorf("查询GCP通道失败：%v", err)
+    }
 
-	var wg sync.WaitGroup
-	semaphore := make(chan struct{}, 10) // 限制并发数为10
+    var wg sync.WaitGroup
+    semaphore := make(chan struct{}, 10) // 限制并发数为10
 
-	for _, channel := range channels {
-		wg.Add(1)
-		semaphore <- struct{}{} // 获取信号量
-		go func(ch Channel) {
-			defer wg.Done()
-			defer func() { <-semaphore }() // 释放信号量
+    for _, channel := range channels {
+        wg.Add(1)
+        semaphore <- struct{}{} // 获取信号量
+        go func(ch Channel) {
+            defer wg.Done()
+            defer func() { <-semaphore }() // 释放信号量
 
-			var config ChannelConfig
-			err := json.Unmarshal([]byte(ch.Config), &config)
-			if err != nil {
-				common.SysError(fmt.Sprintf("解析通道 %d 的配置失败：%v", ch.Id, err.Error()))
-				return
-			}
-			var accessToken string
-			if ch.GcpAccount != nil && *ch.GcpAccount != "" {
-				accessToken, err = client.GetGCPAccessToken(ch.GcpAccount, ch.ProxyURL)
-			} else {
-				accessToken, err = client.GetAccessToken(config.ClientId, config.ClientSecret, config.RefreshToken, ch.ProxyURL)
-			}
+            var config ChannelConfig
+            err := json.Unmarshal([]byte(ch.Config), &config)
+            if err != nil {
+                common.SysError(fmt.Sprintf("解析通道 %d 的配置失败：%v", ch.Id, err.Error()))
+                return
+            }
 
-			if err != nil {
-				handleTokenError(ch, err)
-				return
-			}
+            var accessToken string
+            if ch.GcpAccount != nil && *ch.GcpAccount != "" {
+                accessToken, err = client.GetGCPAccessToken(ch.GcpAccount, ch.ProxyURL)
+            } else {
+                accessToken, err = client.GetAccessToken(config.ClientId, config.ClientSecret, config.RefreshToken, ch.ProxyURL)
+            }
 
-			// 更新数据库中的 key 字段，如果状态为3则更新为1
-			updates := map[string]interface{}{
-				"key": accessToken,
-			}
-			if ch.Status == 3 {
-				updates["status"] = 1
-			}
+            if err != nil {
+                handleTokenError(ch, err)
+                return
+            }
 
-			err = DB.Model(&ch).Updates(updates).Error
-			if err != nil {
-				common.SysError(fmt.Sprintf("更新通道 %d 失败：%v", ch.Id, err.Error()))
-				return
-			}
+            // 只更新访问令牌，不改变状态
+            err = DB.Model(&ch).Update("key", accessToken).Error
+            if err != nil {
+                common.SysError(fmt.Sprintf("更新通道 %d 的访问令牌失败：%v", ch.Id, err.Error()))
+                return
+            }
 
-			if ch.Status == 3 {
-				common.SysLog(fmt.Sprintf("成功更新通道 %d 的访问令牌并将状态更新为1", ch.Id))
-			} else {
-				common.SysLog(fmt.Sprintf("成功更新通道 %d 的访问令牌", ch.Id))
-			}
-		}(channel)
-	}
+            if ch.Status == 3 {
+                common.SysLog(fmt.Sprintf("通道 %d 的访问令牌已更新，但该通道仍处于自动禁用状态", ch.Id))
+            } else {
+                common.SysLog(fmt.Sprintf("成功更新通道 %d 的访问令牌", ch.Id))
+            }
+        }(channel)
+    }
 
-	wg.Wait() // 等待所有goroutine完成
+    wg.Wait() // 等待所有goroutine完成
 
-	return nil
+    return nil
 }
+
 func handleTokenError(ch Channel, err error) {
 	if ch.Status == 1 {
 		updateErr := DB.Model(&ch).Updates(map[string]interface{}{
