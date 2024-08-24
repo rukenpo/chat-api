@@ -27,7 +27,7 @@ func ShouldDisableChannel(err *relaymodel.Error, statusCode int) bool {
 	if statusCode == http.StatusPreconditionRequired {
 		return true
 	}
-  if statusCode == http.StatusForbidden {
+  	if statusCode == http.StatusForbidden {
 		return true
 	}
 	switch err.Type {
