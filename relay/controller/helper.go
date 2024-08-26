@@ -158,7 +158,7 @@ func preConsumeQuota(ctx context.Context, preConsumedQuota int, meta *util.Relay
 		return preConsumedQuota, openai.ErrorWrapper(err, "get_user_quota_failed", http.StatusInternalServerError)
 	}
 	if userQuota-preConsumedQuota < 0 {
-		return preConsumedQuota, openai.ErrorWrapper(errors.New("user quota is not enough"), "insufficient_user_quota", http.StatusForbidden)
+		return preConsumedQuota, openai.ErrorWrapper(errors.New("user quota is not enough"), "insufficient_user_quota", http.StatusPaymentRequired)
 	}
 	err = model.CacheDecreaseUserQuota(ctx, meta.UserId, preConsumedQuota)
 	if err != nil {
