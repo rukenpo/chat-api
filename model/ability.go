@@ -266,6 +266,12 @@ func GetRandomSatisfiedChannel(group string, model string, excluded map[int]stru
 		}
 
 		channel = *channelPtr
+		// 检查渠道的启用状态
+		if channel.Status != common.ChannelStatusEnabled {
+			abilities = removeAbility(abilities, selectedIdx)
+			continue
+		}
+
 		if isRateLimited(channel, selectedAbility.ChannelId, model) {
 			abilities = removeAbility(abilities, selectedIdx)
 			continue
@@ -277,6 +283,7 @@ func GetRandomSatisfiedChannel(group string, model string, excluded map[int]stru
 	return getChannelFromNextPriority(group, model)
 }
 
+
 func getAbilitiesByPriority(group string, model string, ignoreFirstPriority bool, isTools bool, claudeoriginalrequest bool, excluded map[int]struct{}) ([]Ability, error) {
 	var abilities []Ability
 	groupCol := "`group`"
@@ -286,17 +293,17 @@ func getAbilitiesByPriority(group string, model string, ignoreFirstPriority bool
 		trueVal = "true"
 	}
 
-	channelQuery := DB.Where(groupCol+" = ? and model = ? and enabled = "+trueVal, group, model)
+	channelQuery := DB.Where("abilities."+groupCol+" = ? and abilities.model = ? and abilities.enabled = "+trueVal, group, model)
 	if !ignoreFirstPriority {
-		maxPrioritySubQuery := DB.Model(&Ability{}).Select("MAX(priority)").Where(groupCol+" = ? and model = ? and enabled = "+trueVal, group, model)
-		channelQuery = channelQuery.Where("priority = (?)", maxPrioritySubQuery)
+		maxPrioritySubQuery := DB.Model(&Ability{}).Select("MAX(abilities.priority)").Where("abilities."+groupCol+" = ? and abilities.model = ? and abilities.enabled = "+trueVal, group, model)
+		channelQuery = channelQuery.Where("abilities.priority = (?)", maxPrioritySubQuery)
 	}
 	conditions := []string{}
 	if isTools {
-		conditions = append(conditions, "is_tools = true")
+		conditions = append(conditions, "abilities.is_tools = true")
 	}
 	if claudeoriginalrequest {
-		conditions = append(conditions, "claude_original_request = true")
+		conditions = append(conditions, "abilities.claude_original_request = true")
 	}
 	if len(conditions) > 0 {
 		combinedCondition := "(" + strings.Join(conditions, " OR ") + ")"
@@ -309,14 +316,20 @@ func getAbilitiesByPriority(group string, model string, ignoreFirstPriority bool
 	}
 
 	if len(excludedIds) > 0 {
-		channelQuery = channelQuery.Where("channel_id NOT IN (?)", excludedIds)
+		channelQuery = channelQuery.Where("abilities.channel_id NOT IN (?)", excludedIds)
 	}
-	err := channelQuery.Order("weight DESC").Find(&abilities).Error
+
+	// 只查询启用状态的渠道
+	channelQuery = channelQuery.Joins("JOIN channels ON abilities.channel_id = channels.id").
+		Where("channels.status = ?", common.ChannelStatusEnabled)
+
+	err := channelQuery.Order("abilities.weight DESC").Find(&abilities).Error
 	if err != nil {
 		return nil, err
 	}
 	return abilities, nil
 }
+
 
 func getRandomWeightedIndex(abilities []Ability) (int, error) {
 	weightSum := uint(0)
