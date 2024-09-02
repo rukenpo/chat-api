@@ -22,10 +22,12 @@ func (a *Adaptor) Init(meta *util.RelayMeta) {
 }
 
 var modelVersionMap = map[string]string{
-	"gemini-1.5-pro-latest":   "v1beta",
-	"gemini-1.5-flash-latest": "v1beta",
-	"gemini-ultra":            "v1beta",
-	"gemini-1.5-pro-exp-0801": "v1beta",
+	"gemini-1.5-pro-latest":     "v1beta",
+	"gemini-1.5-flash-latest":   "v1beta",
+	"gemini-ultra":              "v1beta",
+	"gemini-1.5-pro-exp-0801":   "v1beta",
+	"gemini-1.5-pro-exp-0827":   "v1beta",
+	"gemini-1.5-flash-exp-0827": "v1beta",
 }
 
 func (a *Adaptor) GetRequestURL(meta *util.RelayMeta) (string, error) {
@@ -57,11 +59,11 @@ func (a *Adaptor) SetupRequestHeader(c *gin.Context, req *http.Request, meta *ut
 	return nil
 }
 
-func (a *Adaptor) ConvertRequest(c *gin.Context, relayMode int, request *model.GeneralOpenAIRequest) (any, error) {
+func (a *Adaptor) ConvertRequest(c *gin.Context, meta *util.RelayMeta, request *model.GeneralOpenAIRequest) (any, error) {
 	if request == nil {
 		return nil, errors.New("request is nil")
 	}
-	switch relayMode {
+	switch meta.Mode {
 	case constant.RelayModeEmbeddings:
 		geminiEmbeddingRequest := ConvertEmbeddingRequest(*request)
 		return geminiEmbeddingRequest, nil

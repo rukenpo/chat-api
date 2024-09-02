@@ -132,7 +132,8 @@ const EditChannel = (props) => {
                     localModels = ['hunyuan'];
                     break;
                 case 24:
-                    localModels = ['gemini-1.5-pro-001','gemini-1.5-pro-latest','gemini-1.5-flash-latest','gemini-1.5-pro-exp-0801'];
+                    localModels = ['gemini-1.5-pro-001','gemini-1.5-pro-latest','gemini-1.5-flash-latest','gemini-1.5-pro-exp-0801',
+                        'gemini-1.5-pro-exp-0827','gemini-1.5-flash-exp-0827'];
                     break;
                 case 2:
                     localModels = ['midjourney'];
@@ -1077,7 +1078,7 @@ const EditChannel = (props) => {
                         )
                     }
                      {
-                        ((inputs.type === 42) || (inputs.type === 14)) && (
+                        ((inputs.type === 42) || (inputs.type === 14) || (inputs.type === 35))  && (
                             <div style={{marginTop: 10, display: 'flex'}}>
                                 <Space>
                                     <Checkbox
