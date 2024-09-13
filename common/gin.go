@@ -49,7 +49,7 @@ func UnmarshalBodyReusable(c *gin.Context, v interface{}) error {
 				delete(reqMap, "max_tokens")
 			}
 			reqMap["presence_penalty"] = 0
-			reqMap["temperature"] = 0
+			reqMap["temperature"] = 1
 		}
 	}
 
