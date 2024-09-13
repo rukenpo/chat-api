@@ -27,7 +27,7 @@ func GetRequestBody(c *gin.Context) ([]byte, error) {
 	return requestBody.([]byte), nil
 }
 
-func UnmarshalBodyReusable(c *gin.Context, v map[string]interface{}) error {
+func UnmarshalBodyReusable(c *gin.Context, v interface{}) error {
 	requestBody, err := GetRequestBody(c)
 	if err != nil {
 		return err
@@ -36,28 +36,22 @@ func UnmarshalBodyReusable(c *gin.Context, v map[string]interface{}) error {
 	// Reset request body for future use
 	c.Request.Body = io.NopCloser(bytes.NewBuffer(requestBody))
 
-	if err = c.Bind(&v); err != nil {
+	// Unmarshal JSON into the provided interface
+	if err = json.Unmarshal(requestBody, v); err != nil {
 		return errors.Wrap(err, "bind request body failed")
 	}
 
-	// Modify the request body based on certain conditions
-	if v["model"] == "o1-preview-2024-09-12" {
-		if _, ok := v["max_tokens"]; ok {
-			v["max_completion_tokens"] = v["max_tokens"]
-			delete(v, "max_tokens")
+	// Modify fields if necessary
+	if reqMap, ok := v.(map[string]interface{}); ok {
+		if reqMap["model"] == "o1-preview-2024-09-12" {
+			if val, exists := reqMap["max_tokens"]; exists {
+				reqMap["max_completion_tokens"] = val
+				delete(reqMap, "max_tokens")
+			}
+			reqMap["presence_penalty"] = 0
+			reqMap["temperature"] = 0
 		}
-		v["presence_penalty"] = 0
-		v["temperature"] = 1
 	}
-
-	// Reset the modified body back to the request
-	modifiedBody, err := json.Marshal(v)
-	if err != nil {
-		return errors.Wrap(err, "failed to marshal modified request body")
-	}
-
-	c.Request.Body = io.NopCloser(bytes.NewBuffer(modifiedBody))
-	c.Set(KeyRequestBody, modifiedBody)
 
 	return nil
 }
