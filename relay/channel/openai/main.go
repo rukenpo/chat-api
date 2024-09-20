@@ -18,6 +18,12 @@ import (
 )
 
 func StreamHandler(c *gin.Context, resp *http.Response, relayMode int, modelName string, fixedContent string) (*model.ErrorWithStatusCode, string, int) {
+	// 如果模型名称以 "o1-" 开头，调用非流式处理函数
+	if strings.HasPrefix(modelName, "o1-") {
+		err, usage, responseText := Handler(c, resp, 0, modelName)
+		return err, responseText, usage.TotalTokens
+	}
+
 	responseText := ""
 	toolCount := 0
 	scanner := bufio.NewScanner(resp.Body)
@@ -230,6 +236,7 @@ func Handler(c *gin.Context, resp *http.Response, promptTokens int, modelName st
 
 	return nil, &textResponse.Usage, responseText
 }
+
 func GenerateFixedContentMessage(fixedContent string, modelName string) string {
 	// 在 fixedContent 的开始处添加换行符
 	modifiedFixedContent := "\n\n" + fixedContent
