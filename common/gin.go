@@ -2,11 +2,12 @@ package common
 
 import (
 	"bytes"
+	"encoding/json"
 	"io"
-        "encoding/json"
+
 	"github.com/gin-gonic/gin"
 	"github.com/pkg/errors"
-	"one-api/relay/model"
+	"one-api/relay/model" // Ensure this path matches your actual project structure
 )
 
 const KeyRequestBody = "key_request_body"
@@ -25,10 +26,10 @@ func GetRequestBody(c *gin.Context) ([]byte, error) {
 	}
 	_ = c.Request.Body.Close()
 	c.Set(KeyRequestBody, requestBody)
-	return requestBody.([]byte), nil
+	return requestBody, nil  // Changed from requestBody.([]byte) to requestBody
 }
 
-func UnmarshalBodyReusable(c *gin.Context, v *GeneralOpenAIRequest) error {
+func UnmarshalBodyReusable(c *gin.Context, v *model.GeneralOpenAIRequest) error {
 	requestBody, err := GetRequestBody(c)
 	if err != nil {
 		return err
@@ -56,6 +57,7 @@ func UnmarshalBodyReusable(c *gin.Context, v *GeneralOpenAIRequest) error {
 
 	return nil
 }
+
 func SetEventStreamHeaders(c *gin.Context) {
 	c.Writer.Header().Set("Content-Type", "text/event-stream")
 	c.Writer.Header().Set("Cache-Control", "no-cache")
