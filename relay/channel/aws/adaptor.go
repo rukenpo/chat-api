@@ -45,8 +45,15 @@ func (a *Adaptor) ConvertRequest(c *gin.Context, meta *util.RelayMeta, request *
 	if request == nil {
 		return nil, errors.New("request is nil")
 	}
-
-	claudeReq := anthropic.ConvertRequest(*request)
+	var claudeReq any
+	valueclaudeoriginalrequest, _ := c.Get("claude_original_request")
+	isclaudeoriginalrequest, _ := valueclaudeoriginalrequest.(bool)
+	if isclaudeoriginalrequest {
+		claudeReq = anthropic.ConverClaudeRequest(*request)
+	} else {
+		claudeReq = anthropic.ConvertRequest(*request)
+	}
+	c.Set(ctxkey.Cross, meta.Config.Cross)
 	c.Set(ctxkey.RequestModel, request.Model)
 	c.Set(ctxkey.ConvertedRequest, claudeReq)
 	return claudeReq, nil
@@ -67,10 +74,9 @@ func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, meta *util.Rel
 	if !meta.IsClaude {
 		if meta.IsStream {
 			var responseText string
-			err, usage, responseText = StreamHandler(c, a.awsClient)
-			if usage == nil {
-				usage = openai.ResponseText2Usage(responseText, meta.ActualModelName, meta.PromptTokens)
-			}
+			err, _, responseText = StreamHandler(c, a.awsClient)
+			usage = openai.ResponseText2Usage(responseText, meta.ActualModelName, meta.PromptTokens)
+
 			if usage.CompletionTokens == 0 {
 				if config.BlankReplyRetryEnabled {
 					return "", nil, &model.ErrorWithStatusCode{
@@ -91,10 +97,8 @@ func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, meta *util.Rel
 	} else {
 		if meta.IsStream {
 			var responseText string
-			err, usage, responseText = StreamClaudeHandler(c, a.awsClient)
-			if usage == nil {
-				usage = openai.ResponseText2Usage(responseText, meta.ActualModelName, meta.PromptTokens)
-			}
+			err, _, responseText = StreamClaudeHandler(c, a.awsClient)
+			usage = openai.ResponseText2Usage(responseText, meta.ActualModelName, meta.PromptTokens)
 			if usage.CompletionTokens == 0 {
 				if config.BlankReplyRetryEnabled {
 					return "", nil, &model.ErrorWithStatusCode{
