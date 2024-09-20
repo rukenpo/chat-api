@@ -7,7 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/pkg/errors"
-	"one-api/relay/model" // Ensure this path matches your actual project structure
+	"one-api/relay/model"
 )
 
 const KeyRequestBody = "key_request_body"
@@ -20,13 +20,13 @@ func GetRequestBody(c *gin.Context) ([]byte, error) {
 		}
 		return nil, errors.New("invalid request body type")
 	}
-	requestBody, err := io.ReadAll(c.Request.Body)
+	requestBodyBytes, err := io.ReadAll(c.Request.Body)
 	if err != nil {
 		return nil, err
 	}
 	_ = c.Request.Body.Close()
-	c.Set(KeyRequestBody, requestBody)
-	return requestBody, nil  // Changed from requestBody.([]byte) to requestBody
+	c.Set(KeyRequestBody, requestBodyBytes)
+	return requestBodyBytes, nil // Modify to return []byte directly and not use a type assertion
 }
 
 func UnmarshalBodyReusable(c *gin.Context, v *model.GeneralOpenAIRequest) error {
