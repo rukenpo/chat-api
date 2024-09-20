@@ -109,48 +109,52 @@ func (a *Adaptor) ConvertImageRequest(request *model.ImageRequest) (any, error) 
 	return request, nil
 }
 func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, meta *util.RelayMeta) (aitext string, usage *model.Usage, err *model.ErrorWithStatusCode) {
+    aitext = ""
 
-	aitext = ""
-	if meta.IsStream {
+    // 先检查模型名称，强制非流处理
+    if strings.HasPrefix(meta.ActualModelName, "o1-") {
+        meta.IsStream = false
+    }
 
-		var responseText string
-		var toolCount int
-		err, responseText, toolCount = StreamHandler(c, resp, meta.Mode, meta.ActualModelName, meta.FixedContent)
-		aitext = responseText
-		if usage == nil || usage.TotalTokens == 0 {
-			usage = ResponseText2Usage(responseText, meta.ActualModelName, meta.PromptTokens)
-		}
-		if usage.TotalTokens != 0 && usage.CompletionTokens == 0 { // some channels don't return prompt tokens & completion tokens
-			usage.PromptTokens = meta.PromptTokens
-			usage.CompletionTokens = usage.TotalTokens - meta.PromptTokens
-		}
-		usage.CompletionTokens += toolCount * 7
-		if usage.CompletionTokens == 0 {
-			if config.BlankReplyRetryEnabled {
-				return "", nil, &model.ErrorWithStatusCode{
-					Error: model.Error{
-						Message: "No completion tokens generated",
-						Type:    "chat_api_error",
-						Param:   "completionTokens",
-						Code:    500,
-					},
-					StatusCode: 500,
-				}
-			}
-		}
-
-	} else {
-		switch meta.Mode {
-		case constant.RelayModeImagesGenerations:
-			err, _ = ImageHandler(c, resp)
-		case constant.RelayModeEdits:
-			err, _ = ImagesEditsHandler(c, resp)
-		default:
-			err, usage, aitext = Handler(c, resp, meta.PromptTokens, meta.ActualModelName)
-		}
-
-	}
-	return
+    if meta.IsStream {
+        // 流处理逻辑
+        var responseText string
+        var toolCount int
+        err, responseText, toolCount = StreamHandler(c, resp, meta.Mode, meta.ActualModelName, meta.FixedContent)
+        aitext = responseText
+        if usage == nil || usage.TotalTokens == 0 {
+            usage = ResponseText2Usage(responseText, meta.ActualModelName, meta.PromptTokens)
+        }
+        if usage.TotalTokens != 0 && usage.CompletionTokens == 0 {
+            usage.PromptTokens = meta.PromptTokens
+            usage.CompletionTokens = usage.TotalTokens - meta.PromptTokens
+        }
+        usage.CompletionTokens += toolCount * 7
+        if usage.CompletionTokens == 0 {
+            if config.BlankReplyRetryEnabled {
+                return "", nil, &model.ErrorWithStatusCode{
+                    Error: model.Error{
+                        Message: "No completion tokens generated",
+                        Type:    "chat_api_error",
+                        Param:   "completionTokens",
+                        Code:    500,
+                    },
+                    StatusCode: 500,
+                }
+            }
+        }
+    } else {
+        // 非流处理逻辑
+        switch meta.Mode {
+        case constant.RelayModeImagesGenerations:
+            err, _ = ImageHandler(c, resp)
+        case constant.RelayModeEdits:
+            err, _ = ImagesEditsHandler(c, resp)
+        default:
+            err, usage, aitext = Handler(c, resp, meta.PromptTokens, meta.ActualModelName)
+        }
+    }
+    return
 }
 
 func (a *Adaptor) GetModelList() []string {
