@@ -66,34 +66,35 @@ func (a *Adaptor) GetRequestURL(meta *util.RelayMeta) (string, error) {
 	}
 }
 
-func (a *Adaptor) ConvertRequest(c *gin.Context, meta *util.RelayMeta, request *model.GeneralOpenAIRequest) (any, error) {
-	if request == nil {
-		return nil, errors.New("request is nil")
+func (a *Adaptor) SetupRequestHeader(c *gin.Context, req *http.Request, meta *util.RelayMeta) error {
+	channel.SetupCommonRequestHeader(c, req, meta)
+	if meta.ChannelType == common.ChannelTypeAzure {
+		req.Header.Set("api-key", meta.APIKey)
+		return nil
+	} else if meta.APIKey != "" {
+		req.Header.Set("Authorization", "Bearer "+meta.APIKey)
+		return nil
 	}
-	if strings.HasPrefix(request.Model, "o1-") {
-		// Here is the change, force stream to false if the model starts with "o1-"
-		request.Stream = false
-		// The existing token logic can remain as is
-		if request.MaxCompletionTokens == 0 && request.MaxTokens != 0 {
-			request.MaxCompletionTokens = request.MaxTokens
-			request.MaxTokens = 0
-		}
+	if meta.ChannelType == common.ChannelTypeOpenRouter {
+		req.Header.Set("X-Title", "One API")
 	}
-	return request, nil
+	return nil
 }
 
 func (a *Adaptor) ConvertRequest(c *gin.Context, meta *util.RelayMeta, request *model.GeneralOpenAIRequest) (any, error) {
-	if request == nil {
-		return nil, errors.New("request is nil")
-	}
-	if strings.HasPrefix(request.Model, "o1-") {
-		if request.MaxCompletionTokens == 0 && request.MaxTokens != 0 {
-			request.MaxCompletionTokens = request.MaxTokens
-			request.MaxTokens = 0
-			request.Stream = false
-		}
-	}
-	return request, nil
+    if request == nil {
+        return nil, errors.New("request is nil")
+    }
+    if strings.HasPrefix(request.Model, "o1-") {
+        // 强制非流处理
+        request.Stream = false
+        // 确保 MaxCompletionTokens 高效配置
+        if request.MaxCompletionTokens == 0 && request.MaxTokens != 0 {
+            request.MaxCompletionTokens = request.MaxTokens
+            request.MaxTokens = 0
+        }
+    }
+    return request, nil
 }
 
 func (a *Adaptor) DoRequest(c *gin.Context, meta *util.RelayMeta, requestBody io.Reader) (*http.Response, error) {
