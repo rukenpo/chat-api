@@ -27,7 +27,7 @@ func GetRequestBody(c *gin.Context) ([]byte, error) {
 	return requestBody.([]byte), nil
 }
 
-func UnmarshalBodyReusable(c *gin.Context, v interface{}) error {
+func UnmarshalBodyReusable(c *gin.Context, v *GeneralOpenAIRequest) error {
 	requestBody, err := GetRequestBody(c)
 	if err != nil {
 		return err
@@ -36,27 +36,25 @@ func UnmarshalBodyReusable(c *gin.Context, v interface{}) error {
 	// Reset request body for future use
 	c.Request.Body = io.NopCloser(bytes.NewBuffer(requestBody))
 
-	// Unmarshal JSON into the provided interface
+	// Unmarshal JSON into the provided struct
 	if err = json.Unmarshal(requestBody, v); err != nil {
-		return errors.Wrap(err, "bind request body failed")
+		return errors.New("bind request body failed: " + err.Error())
 	}
 
-	// Modify fields if necessary
-	if reqMap, ok := v.(map[string]interface{}); ok {
-		if reqMap["model"] == "o1-preview" || reqMap["model"] == "o1-mini" {
-			if val, exists := reqMap["max_tokens"]; exists {
-				reqMap["max_completion_tokens"] = val
-				delete(reqMap, "max_tokens")
-			}
-			reqMap["presence_penalty"] = 0
-			reqMap["temperature"] = 1
-			reqMap["stream"] = false
+	// Modify fields if necessary based on model name
+	if v.Model == "o1-preview" || v.Model == "o1-mini" {
+		// Move max_tokens to max_completion_tokens if it exists
+		if v.MaxTokens != 0 {
+			v.MaxCompletionTokens = v.MaxTokens
+			v.MaxTokens = 0
 		}
+		v.PresencePenalty = 0
+		v.Temperature = 1
+		v.Stream = false
 	}
 
 	return nil
 }
-
 func SetEventStreamHeaders(c *gin.Context) {
 	c.Writer.Header().Set("Content-Type", "text/event-stream")
 	c.Writer.Header().Set("Cache-Control", "no-cache")
