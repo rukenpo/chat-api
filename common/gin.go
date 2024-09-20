@@ -43,14 +43,14 @@ func UnmarshalBodyReusable(c *gin.Context, v interface{}) error {
 
 	// Modify fields if necessary
 	if reqMap, ok := v.(map[string]interface{}); ok {
-		if reqMap["model"] == "o1-preview" {
+		if reqMap["model"] == "o1-preview" || reqMap["model"] == "o1-mini" {
 			if val, exists := reqMap["max_tokens"]; exists {
 				reqMap["max_completion_tokens"] = val
 				delete(reqMap, "max_tokens")
 			}
 			reqMap["presence_penalty"] = 0
 			reqMap["temperature"] = 1
-			reqMap["stream"] = true
+			reqMap["stream"] = false
 		}
 	}
 
