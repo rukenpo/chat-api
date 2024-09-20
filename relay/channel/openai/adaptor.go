@@ -89,6 +89,7 @@ func (a *Adaptor) ConvertRequest(c *gin.Context, meta *util.RelayMeta, request *
 		if request.MaxCompletionTokens == 0 && request.MaxTokens != 0 {
 			request.MaxCompletionTokens = request.MaxTokens
 			request.MaxTokens = 0
+			request.Stream = false
 		}
 	}
 	return request, nil
