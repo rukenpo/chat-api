@@ -6,6 +6,7 @@ import (
         "encoding/json"
 	"github.com/gin-gonic/gin"
 	"github.com/pkg/errors"
+	"one-api/relay/model"
 )
 
 const KeyRequestBody = "key_request_body"
